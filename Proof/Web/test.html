@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Video Editor Proof</title>
+
+    <style>
+        html, body {
+            margin: 0;
+            width: 100%;
+            height: 100%;
+            background: white;
+            font-family: sans-serif;
+        }
+
+        body {
+            padding: 40px;
+            box-sizing: border-box;
+        }
+
+        #timeline {
+            width: 100%;
+            height: 120px;
+            background: #333;
+            position: relative;
+            cursor: crosshair;
+            user-select: none;
+        }
+
+        #selection {
+            position: absolute;
+            top: 0;
+            height: 100%;
+            background: white;
+            opacity: 0.35;
+            display: none;
+            pointer-events: none;
+        }
+
+        #startMarker,
+        #endMarker {
+            position: absolute;
+            top: 0;
+            width: 3px;
+            height: 100%;
+            background: white;
+            display: none;
+            pointer-events: none;
+        }
+
+        #hoverTime {
+            position: absolute;
+            top: -30px;
+            display: none;
+            font-family: monospace;
+            pointer-events: none;
+            white-space: nowrap;
+        }
+
+        #duration {
+            margin-top: 10px;
+            font-family: monospace;
+        }
+
+        .controls {
+            margin-top: 30px;
+        }
+
+        .time {
+            margin-top: 12px;
+            font-family: monospace;
+        }
+
+        .time input {
+            width: 28px;
+            text-align: center;
+            font-family: monospace;
+        }
+
+        .time input.ms {
+            width: 42px;
+        }
+
+        button {
+            padding: 7px 14px;
+            margin-right: 8px;
+        }
+
+        #status {
+            margin-top: 20px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+
+<body>
+
+<h2>Video Editor</h2>
+
+<div id="timeline">
+    <div id="selection"></div>
+    <div id="startMarker"></div>
+    <div id="endMarker"></div>
+    <div id="hoverTime"></div>
+</div>
+
+<div id="duration">
+    Duration: 00:05:00.000
+</div>
+
+<div class="controls">
+
+    <button id="cutButton">CUT</button>
+    <button id="clearButton">CLEAR</button>
+
+    <div class="time">
+        Start:
+        <input id="startH" maxlength="2" value="00"> :
+        <input id="startM" maxlength="2" value="00"> :
+        <input id="startS" maxlength="2" value="00"> .
+        <input id="startMS" class="ms" maxlength="3" value="000">
+    </div>
+
+    <div class="time">
+        End:
+        <input id="endH" maxlength="2" value="00"> :
+        <input id="endM" maxlength="2" value="00"> :
+        <input id="endS" maxlength="2" value="00"> .
+        <input id="endMS" class="ms" maxlength="3" value="000">
+    </div>
+
+    <div id="status">
+        Click anywhere on the timeline to choose START.
+    </div>
+
+</div>
+
+<script>
+const timeline = document.getElementById("timeline");
+const selection = document.getElementById("selection");
+const startMarker = document.getElementById("startMarker");
+const endMarker = document.getElementById("endMarker");
+const hoverTime = document.getElementById("hoverTime");
+
+const durationDisplay =
+    document.getElementById("duration");
+
+const status =
+    document.getElementById("status");
+
+const cutButton =
+    document.getElementById("cutButton");
+
+const clearButton =
+    document.getElementById("clearButton");
+
+const BACKEND =
+    "http://127.0.0.1:8080";
+
+let duration = 300;
+
+let startTime = null;
+let endTime = null;
+
+let startX = null;
+let endX = null;
+
+let selecting = false;
+let selected = false;
+
+
+/*
+ * Convert seconds into HH:MM:SS.mmm
+ */
+
+function formatTime(seconds) {
+
+    const h =
+        Math.floor(seconds / 3600);
+
+    const m =
+        Math.floor((seconds % 3600) / 60);
+
+    const s =
+        Math.floor(seconds % 60);
+
+    const ms =
+        Math.floor(
+            (seconds - Math.floor(seconds)) * 1000
+        );
+
+    return (
+        String(h).padStart(2, "0") +
+        ":" +
+        String(m).padStart(2, "0") +
+        ":" +
+        String(s).padStart(2, "0") +
+        "." +
+        String(ms).padStart(3, "0")
+    );
+}
+
+
+/*
+ * Get mouse position relative to timeline.
+ */
+
+function getX(event) {
+
+    const rect =
+        timeline.getBoundingClientRect();
+
+    return Math.max(
+        0,
+        Math.min(
+            rect.width,
+            event.clientX - rect.left
+        )
+    );
+}
+
+
+/*
+ * Convert mouse position into timeline time.
+ */
+
+function getTime(event) {
+
+    const rect =
+        timeline.getBoundingClientRect();
+
+    const x =
+        Math.max(
+            0,
+            Math.min(
+                rect.width,
+                event.clientX - rect.left
+            )
+        );
+
+    return (
+        x / rect.width
+    ) * duration;
+}
+
+
+/*
+ * Put a time into the visible time fields.
+ */
+
+function setFields(prefix, time) {
+
+    const h =
+        Math.floor(time / 3600);
+
+    const m =
+        Math.floor((time % 3600) / 60);
+
+    const s =
+        Math.floor(time % 60);
+
+    const ms =
+        Math.floor(
+            (time - Math.floor(time)) * 1000
+        );
+
+    document.getElementById(prefix + "H").value =
+        String(h).padStart(2, "0");
+
+    document.getElementById(prefix + "M").value =
+        String(m).padStart(2, "0");
+
+    document.getElementById(prefix + "S").value =
+        String(s).padStart(2, "0");
+
+    document.getElementById(prefix + "MS").value =
+        String(ms).padStart(3, "0");
+}
+
+
+/*
+ * Hovering over the timeline.
+ *
+ * Before START:
+ *     simply show the time.
+ *
+ * After START:
+ *     the selection can only extend forward.
+ */
+
+timeline.addEventListener(
+    "pointermove",
+    function(event) {
+
+        const x =
+            getX(event);
+
+        const time =
+            getTime(event);
+
+        if (selecting && time < startTime) time = startTime;
+
+        hoverTime.textContent =
+            formatTime(time);
+
+        hoverTime.style.display =
+            "block";
+
+        hoverTime.style.left =
+            x + "px";
+
+
+        if (selecting) {
+
+            /*
+             * Do not allow the active selection
+             * to move behind START.
+             */
+
+            if (x < startX) {
+                return;
+            }
+
+            endX = x;
+            endTime = time;
+
+            selection.style.left =
+                startX + "px";
+
+            selection.style.width =
+                (endX - startX) + "px";
+
+            selection.style.display =
+                "block";
+
+            endMarker.style.left =
+                endX + "px";
+
+            endMarker.style.display =
+                "block";
+
+            setFields(
+                "end",
+                endTime
+            );
+
+            status.textContent =
+                "END: " +
+                formatTime(endTime) +
+                " — click to finish.";
+        }
+    }
+);
+
+
+/*
+ * FIRST CLICK = START
+ * SECOND CLICK = END
+ */
+
+timeline.addEventListener(
+    "pointerdown",
+    function(event) {
+
+        const x =
+            getX(event);
+
+        const time =
+            getTime(event);
+
+
+        /*
+         * FIRST CLICK
+         */
+
+      if (!selecting && !selected) {
+
+            startX = x;
+            startTime = time;
+
+            selecting = true;
+
+            startMarker.style.left =
+                startX + "px";
+
+            startMarker.style.display =
+                "block";
+
+            setFields(
+                "start",
+                startTime
+            );
+
+            status.textContent =
+                "START: " +
+                formatTime(startTime) +
+                " — move forward and click END.";
+
+            return;
+        }
+
+
+        /*
+         * SECOND CLICK
+         */
+
+        if (selecting) {
+
+            /*
+             * IMPORTANT:
+             *
+             * The user cannot choose an END
+             * at or before START.
+             *
+             * The click is completely ignored.
+             */
+
+            if (x <= startX) {
+                return;
+            }
+
+            endX = x;
+            endTime = time;
+
+            selecting = false;
+            selected = true;
+
+            endMarker.yle.left =
+                endX + "px";
+
+            endMarker.style.display =
+                "block";
+
+            selection.style.left =
+                startX + "px";
+
+            selection.style.width =
+                (endX - startX) + "px";
+
+            selection.style.display =
+                "block";
+
+            setFields(
+                "end",
+                endTime
+            );
+
+            status.textContent =
+                "CUT RANGE: " +
+                formatTime(startTime) +
+                " → " +
+                formatTime(endTime) +
+                " — press CUT.";
+        }
+    }
+);
+
+
+timeline.addEventListener(
+    "pointerleave",
+    function() {
+
+        hoverTime.style.display =
+            "none";
+    }
+);
+
+
+/*
+ * CUT
+ *
+ * JavaScript sends the request.
+ * C++ performs the actual operation.
+ */
+
+cutButton.addEventListener(
+    "click",
+    async function() {
+
+        if (!selected) {
+
+            status.textContent =
+                "Select a range first.";
+
+            rn;
+        }
+
+        status.textContent =
+            "Cutting...";
+
+        try {
+
+            const response =
+                await fetch(
+                    BACKEND + "/cut",
+                    {
+                        method: "POST",
+
+                        headers: {
+                            "Content-Type":
+                                "application/json"
+                        },
+
+                        body:
+                            JSON.stringify({
+                                start: startTime,
+                                end: endTime
+                            })
+                    }
+                );
+
+            const result =
+                await response.json();
+
+            if (!result.success) {
+
+                status.textContent =
+                    "Invalid cut: " +
+                    result.error;
+
+                return;
+            }
+
+            duration =
+                result.duration;
+
+            durationDisplay.textContent =
+                "Duration: " +
+                formatTime(duration);
+
+            status.textContent =
+                "CUT COMPLETE — remaining: " +
+                formatTime(duration);
+
+            clearSelection();
+
+        } catch (error) {
+
+            status.textContent =
+                "Backend unavailable.";
+        }
+    }
+);
+
+
+/*
+ * CLEAR
+ */
+
+clearButton.addEventListener(
+    "click",
+    async function() {
+
+        try {
+
+            const response =
+                await fetch(
+                    BACKEND + "/clear",
+                    {
+                        method: "POST"
+                    }
+                );
+
+            const result =
+                await response.json();
+
+            duration =
+                result.duration;
+
+            durationDisplay.textContent =
+                "Duration: " +
+                formatTime(duration);
+
+            clearSelection();
+
+            status.textContent =
+                "Timeline reset. Click to choose START.";
+
+        } catch (error) {
+
+            status.xtContent =
+                "Backend unavailable.";
+        }
+    }
+);
+
+
+/*
+ * Reset the UI selection.
+ */
+
+function clearSelection() {
+
+    startTime = null;
+    endTime = null;
+
+    startX = null;
+    endX = null;
+
+    selecting = false;
+    selected = false;
+
+    selection.style.display =
+        "none";
+
+    startMarker.style.display =
+        "none";
+
+    endMarker.style.display =
+        "none";
+
+    setFields("start", 0);
+    setFields("end", 0);
+}
+</script>
+
+</body>
+</html>

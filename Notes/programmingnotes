@@ -1,0 +1,665 @@
+
+Wed, Aug 12th convo with ChatGPT summarized "Football Positional Value Analyzed Chat"
+Yep 😂. Keep it informal—this is a **design note**, not documentation written by a committee.
+
+### Undo Design Note
+
+We were designing the `Action` base class and initially had:
+
+```cpp
+virtual void execute() = 0;
+virtual void undo() = 0;
+```
+
+The reasoning was that every action needs to be undoable. But we stopped and questioned the assumption instead of blindly implementing it.
+
+The important realization was that **"an action can be undone" does not necessarily mean "every action must own an undo function."**
+
+If every action gets its own `undo()`, then undo behavior becomes distributed across every action type:
+
+* `CutAction` knows how to undo itself.
+* `DeleteAction` knows how to undo itself.
+* `MoveAction` knows how to undo itself.
+* etc.
+
+That gives every action another piece of authority and potentially duplicates mechanisms that should be centralized.
+
+This connected to our broader **Fortress / primitive power** principle:
+
+> **Give the system powerful primitive operations and keep authority centralized rather than distributing the same power across every object.**
+
+The better question is:
+
+> **"You want to undo? Which action? Undo."**
+
+Rather than:
+
+> **"Ask the action how it wants to undo itself."**
+
+The funny part is that the AI initially made the exact architectural mistake we were trying to prevent: it saw "actions need to be undoable" and immediately turned that assumption into `virtual void undo()`. We caught it by stopping and asking **who actually owns undo?**
+
+### Conclusion
+
+**Don't add `undo()` to `Action merely because actions participate in undo.**
+
+First determine what owns history, state reversal, and undo. Then give that system the necessary authority.
+
+**Rationale coding exists specifically to prevent assumptions from becoming architecture.**
+
+
+Direct Convo for learning purposes  😂 Yeah, I get it. And that's actually the sharper argument.
+
+If Action already represents the thing that happened, then giving every action its own bespoke undo() implementation can be unnecessary duplication.
+
+We want:
+
+"You want to undo? Which action? Undo."
+
+Not:
+
+"Which action? Let me ask that action how to undo itself, then let me invoke its personal undo machinery."
+
+That's distributed power for something that should be one primitive operation.
+
+So I agree with the direction: remove undo() from Action for now.
+
+Our class becomes:
+
+#pragma once
+
+class Action {
+public:
+    virtual ~Action() = default;
+
+    virtual void execute() = 0;
+};
+
+And importantly, we're not deleting undo because undo isn't important.
+
+We're deleting it because we haven't established that every Action needs to own an undo implementation.
+
+The eventual architecture can instead give the editor a single, centralized:
+
+undo(action)
+
+or potentially:
+
+undo()
+
+depending on how we decide the history/state mechanism works.
+
+And that's much more consistent with the principle we've been developing:
+
+Centralize primitive capabilities. Let objects provide the data/meaning required by those primitives.
+
+Five lines that actually mean something beats fifty lines of "well, every class might need this someday.
+
+
+Note to self: Ultimate terminal note: Know where you are. That's it.
+
+
+ChatGPT recommended note:
+std::cout requires <iostream>. Compiler errors identify the missing dependency.
+
+# C++ RWE Note — `const` and Pointers
+
+## `const` as Read-Only Privilege
+
+A useful working mental model:
+
+> **`const` means read-only privilege.**
+
+It allows access to something while restricting modification through that particular access path.
+
+### Reference example
+
+```cpp
+const std::string& getIdentity() const;
+```
+
+There are two separate `const` rules here:
+
+```cpp
+const std::string&
+```
+
+The caller receives a reference to the existing string, but cannot modify the string through that reference.
+
+```cpp
+getIdentity() const
+```
+
+The getter promises that calling it will not modify the `Video` object.
+
+## Pointers
+
+The placement of `const` matters with pointers.
+
+```cpp
+const int* p;
+```
+
+**Pointer to const data.**
+
+You can change where `p` points, but you cannot modify the integer through `p`.
+
+```cpp
+int* const p = &x;
+```
+
+**Const pointer.**
+
+`p` cannot point somewhere else, but you can modify the integer through `p`.
+
+```cpp
+const int* const p = &x;
+```
+
+**Const pointer to const data.**
+
+You cannot change where `p` points, and you cannot modify the data through `p`.
+
+### Mental model
+
+```text
+const DATA
+    ↓
+No modification privilege over the data.
+
+const POINTER
+    ↓
+No modification privilege over where the pointer points.
+
+const DATA + const POINTER
+    ↓
+Neither can be modified through that pointer.
+```
+
+The important lesson is not merely memorizing the syntax.
+
+**Look at what `const` is attached to.**
+
+That tells you what the read-only restriction applies to.
+
+
+# Shell Scripts — The Basic Idea
+
+A shell script is basically a **small program for the command line**.
+
+Instead of manually typing a long sequence of terminal commands, we put those commands into a file such as:
+
+```bash
+build.sh
+```
+
+Then we make the file executable:
+
+```bash
+chmod +x build.sh
+```
+
+and run it:
+
+```bash
+./build.sh
+```
+
+## Arguments
+
+A script can receive information when we call it:
+
+```bash
+./build.sh test
+```
+
+Inside the script, the first argument is available as:
+
+```bash
+$1
+```
+
+So the script can make a condition:
+
+```bash
+if [ "$1" = "test" ]; then
+    # run test build commands
+fi
+```
+
+The basic idea is:
+
+```text
+build.sh
+   ↓
+read instructions
+   ↓
+receive arguments
+   ↓
+make decisions
+   ↓
+run commands
+```
+
+## Important distinction
+
+The filesystem is case-sensitive:
+
+```bash
+Tests
+```
+
+and
+
+```bash
+tests
+```
+
+are different names.
+
+But `test` in:
+
+```bash
+./build.sh test
+```
+
+is simply an argument we chose to give the script. It does not have to match the directory name.
+
+For example:
+
+```bash
+./build.sh test
+```
+
+can mean:
+
+> "Build the tests."
+
+while the actual directory remains:
+
+```text
+Tests/
+```
+
+## Why this matters
+
+We can turn repetitive development commands into our own tools.
+
+Instead of repeatedly typing:
+
+```bash
+g++ -I Video Tests/test_video.cpp Video/video.cpp -o test_video
+```
+
+we can eventually just type:
+
+```bash
+./build.sh test
+```
+
+The script becomes a small layer of automation that **we understand and control**.
+
+**C++ builds the application.
+Shell scripts build and control the development workflow.**
+
+
+Yeah. This is a good one to keep in your notes because it introduces a useful shell pattern.
+
+### `find . -maxdepth 3 | sort`
+
+Break it down:
+
+```bash
+find . -maxdepth 3 | sort
+```
+
+**`find`**
+The command that searches through a directory structure and produces paths matching whatever rules you give it.
+
+**`.`**
+Means **“start here.”**
+So if you're currently in your project root, `find .` means:
+
+> Start searching from the current directory.
+
+**`-maxdepth 3`**
+Tells `find` how deep it's allowed to go.
+
+Think:
+
+```text
+.                    ← depth 0
+├── Main              ← depth 1
+│   └── main.cpp      ← depth 2
+├── Video             ← depth 1
+│   ├── video.h       ← depth 2
+│   └── video.cpp     ← depth 2
+└── Tests             ← depth 1
+    └── test_video.cpp ← depth 2
+```
+
+So `-maxdepth 3` prevents it from endlessly digging through deeper directories.
+
+**`|` (pipe)**
+This is the important shell concept.
+
+It takes the **output of the command on the left** and feeds it into the **input of the command on the right**.
+
+```text
+find . -maxdepth 3
+        ↓
+      output
+        ↓
+       |
+        ↓
+      sort
+        ↓
+     sorted output
+```
+
+**`sort`**
+Alphabetically sorts the lines it receives.
+
+### Note version
+
+> **`find . -maxdepth 3 | sort`** = Search the current directory and its subdirectories up to 3 levels deep, then pipe the results into `sort` so they are displayed alphabetically.
+
+And the bigger lesson is that shell commands can be **composed**. You aren't limited to one command doing everything:
+
+```text
+command A → output → pipe → command B → output
+```
+
+That's a big part of why shell scripting becomes powerful.
+
+
+From **whatever directory your terminal is currently in**.
+
+The `.` means **the current working directory**.
+
+So if you run:
+
+```bash
+pwd
+```
+
+and it says:
+
+```text
+/Users/.../Video Editor
+```
+
+then:
+
+```bash
+find . -maxdepth 3 | sort
+```
+
+starts searching from:
+
+```text
+/Users/.../Video Editor
+```
+
+If you `cd` somewhere else first:
+
+```bash
+cd Video
+```
+
+then `.` changes meaning. Now `find .` starts from:
+
+```text
+/Users/.../Video Editor/Video
+```
+
+So the mental model is:
+
+> **`.` = “right where I am right now.”**
+
+And `pwd` tells you exactly where that is.
+
+Almost — but there's one useful distinction.
+
+If you want to see **the entire Video Editor project**, you actually want to run `find` **from the Video Editor root**, not from `Header`.
+
+Because `find` searches **downward from where you start**. If you `cd` into `Header`, it can't show you sibling folders like `Video`, `Actions`, `Tests`, etc.
+
+So:
+
+```bash
+cd "/path/to/Video Editor"
+find . -maxdepth 3 | sort
+```
+
+is the right move for getting the project structure.
+
+And yes, the `3` is simply the **maximum depth we're asking it to inspect**. It doesn't mean "there are three folders." It means:
+
+> Don't descend more than three directory levels from where I started.
+
+For your current project, `3` is just a convenient ceiling that should expose everything we're interested in without potentially dumping a gigantic tree.
+
+**For notes:**
+
+> `find . -maxdepth 3 | sort` — Starting from the current directory (`.`), search downward up to 3 levels and sort the resulting paths. `find` only searches downward, so start from the directory whose contents you want to inspect.
+
+sed
+---
+sed = stream editor. Used to search for and replace text directly in files.
+
+Basic replacement:
+sed -i '' 's/OLD/NEW/g' file
+
+Example:
+sed -i '' 's/Video\/audiodata\.cpp/Video\/audio_data.cpp/g' Main/build.sh
+
+Meaning:
+-i ''     Edit the file in place (macOS syntax)
+s/        Substitute
+OLD       Text to find
+NEW       Replacement text
+/g        Replace every occurrence on each line
+file      File being modified
+
+Useful for:
+- Renaming references throughout a file
+- Updating paths
+- Changing repeated text
+- Making bulk text replacements without opening the file manually
+
+Important:
+sed changes the actual file. Use cat -n afterward to verify the result.
+
+Oh, absolutely. That's actually a good workflow for this project. You can use the terminal to **write entire files from commands**, rather than opening each file and manually pasting things around.
+
+Since we're doing this iteratively, I'd use a **heredoc**. It lets us say "make this file contain exactly this."
+
+For example:
+
+```bash
+cat > Actions/cut.cpp <<'EOF'
+#include "cut.h"
+
+#include <stdexcept>
+
+CutAction::CutAction(double startTime, double endTime)
+    : startTime(startTime), endTime(endTime) {
+
+    if (startTime < 0.0) {
+        throw std::invalid_argument("Start time cannot be negative");
+    }
+
+    if (endTime <= startTime) {
+        throw std::invalid_argument("End time must be greater than start time");
+    }
+}
+
+void CutAction::execute(Timeline& timeline) {
+}
+
+double CutAction::getStartTime() const {
+    return startTime;
+}
+
+double CutAction::getEndTime() const {
+    return endTime;
+}
+EOF
+```
+
+Everything between:
+
+```text id="fz0ygo"
+<<'EOF'
+```
+
+and:
+
+```text id="tqg9ch"
+EOF
+```
+
+gets written into `Actions/cut.cpp`.
+
+### For our project
+
+We can actually make a **single command block** that creates/overwrites all the files we want.
+
+For example, once we've settled the current architecture:
+
+```bash
+cat > Video/audio_data.h <<'EOF'
+...
+EOF
+
+cat > Video/timeline.h <<'EOF'
+...
+EOF
+
+cat > Video/timeline.cpp <<'EOF'
+...
+EOF
+
+cat > Actions/action.h <<'EOF'
+...
+EOF
+
+cat > Actions/cut.h <<'EOF'
+...
+EOF
+
+cat > Actions/cut.cpp <<'EOF'
+...
+EOF
+```
+
+Then:
+
+```bash
+./Main/build.sh
+```
+
+And test.
+
+That's much better for us because **I can give you the exact state of the files**, rather than us playing telephone with:
+
+> "change line 14..."
+
+> "wait, which version of line 14?"
+
+> "oh shit, there's another build.sh."
+
+😂
+
+### One important distinction
+
+`cat > file <<'EOF'` **overwrites the entire file**.
+
+So it's fantastic when we're deliberately saying:
+
+> "This is the canonical version of this file."
+
+For small edits where we only want to replace a string, that's where your newly learned `sed` is useful.
+
+So our terminal toolkit becomes:
+
+```text id="r7oy5k"
+cat > file <<'EOF' ... EOF
+    → create/replace entire file
+
+sed -i '' 's/old/new/g' file
+    → modify specific text
+
+cat -n file
+    → inspect file with line numbers
+
+find . -maxdepth 3 | sort
+    → inspect project structure
+
+./Main/build.sh
+    → build everything
+```
+
+**For this project, I vote we use the heredoc approach from here on out whenever we're establishing a whole file.** It keeps the architecture synchronized.
+
+Yep — **with the command we used, that's exactly the practical effect.**
+
+For example:
+
+```bash
+cat > file.cpp <<'EOF'
+...
+EOF
+```
+
+means:
+
+1. `>` → redirect output **into the file**, replacing its existing contents.
+2. `<<'EOF'` → start a **heredoc**; everything until the matching `EOF` is treated as the input.
+3. Final `EOF` → ends the heredoc.
+
+So:
+
+```bash
+cat > test.txt <<'EOF'
+hello
+world
+EOF
+```
+
+makes `test.txt` contain exactly:
+
+```text
+hello
+world
+```
+
+The existing contents are overwritten.
+
+### One useful distinction
+
+`EOF` itself isn't magic. It's just the delimiter we chose.
+
+You could do:
+
+```bash
+cat > test.txt <<'END'
+hello
+END
+```
+
+Same behavior.
+
+And because we use:
+
+```bash
+<<'EOF'
+```
+
+with the quotes, the shell doesn't expand things like `$HOME` or `$(command)` inside the block. **For our code files, that's exactly what we want.**
+
+So your note can basically be:
+
+> **`cat > file <<'EOF' ... EOF` = replace the entire file with the supplied contents.**
+
+That'll be one of our main "canonicalize this file" commands.
