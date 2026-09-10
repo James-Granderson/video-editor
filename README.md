@@ -1,5 +1,3 @@
-Here is an updated `README.md` tailored specifically to the core time-based editing architecture of your project:
-
 ```markdown
 # Video Editor
 
