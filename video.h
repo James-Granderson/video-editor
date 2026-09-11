@@ -1,21 +1,26 @@
-#pragma once
+#ifndef VIDEO_H
+#define VIDEO_H
 
-#include <string>
+#include "media_resource.h"
+#include <memory>
 
 class Video {
 private:
-    std::string identity;
-    std::string source;
-    double duration;
+    std::shared_ptr<MediaResource> resource;
 
 public:
-    Video(const std::string& identity,
-          const std::string& source,
-          double duration);
+    explicit Video(std::shared_ptr<MediaResource> res);
 
-    const std::string& getIdentity() const;
-    const std::string& getSource() const;
-    double getDuration() const;
+    // Inlined accessors per Rule #6
+    const std::string& getIdentity() const { return resource->getIdentity(); }
+    const std::string& getSource() const { return resource->getSourcePath(); }
+    double getDuration() const { return resource->getDuration(); }
 
+    bool isLinked() const { return resource && resource.use_count() > 1; }
+
+    // Lifecycle and domain modifications
+    void separate();
     void cut(double startTime, double endTime);
 };
+
+#endif // VIDEO_H
