@@ -1,49 +1,34 @@
 #include "audio_data.h"
-
 #include <stdexcept>
 
-AudioData::AudioData(const std::string& identity,
-                     const std::string& source,
-                     double duration)
-    : identity(identity), source(source), duration(duration) {
-
-    if (identity.empty()) {
-        throw std::invalid_argument("Audio identity cannot be empty");
+AudioData::AudioData(std::shared_ptr<MediaResource> res, double volume)
+    : resource(std::move(res)), volume(volume) {
+    if (!resource) {
+        throw std::invalid_argument("AudioData resource pointer cannot be null");
     }
-
-    if (source.empty()) {
-        throw std::invalid_argument("Audio source cannot be empty");
-    }
-
-    if (duration <= 0.0) {
-        throw std::invalid_argument("Audio duration must be positive");
+    if (volume < 0.0) {
+        throw std::invalid_argument("Volume cannot be negative");
     }
 }
 
-const std::string& AudioData::getIdentity() const {
-    return identity;
-}
-
-const std::string& AudioData::getSource() const {
-    return source;
-}
-
-double AudioData::getDuration() const {
-    return duration;
+void AudioData::separate() {
+    if (isLinked()) {
+        // Re-assign resource pointer to a new heap copy preserving current snapshot
+        resource = std::make_shared<MediaResource>(*resource);
+    }
 }
 
 void AudioData::cut(double startTime, double endTime) {
     if (startTime < 0.0) {
         throw std::invalid_argument("Start time cannot be negative");
     }
-
     if (endTime <= startTime) {
         throw std::invalid_argument("End time must be greater than start time");
     }
-
-    if (endTime > duration) {
-        throw std::invalid_argument("End time cannot exceed audio duration");
+    if (endTime > resource->getDuration()) {
+        throw std::invalid_argument("End time cannot exceed current duration");
     }
 
-    duration -= (endTime - startTime);
+    double newDuration = resource->getDuration() - (endTime - startTime);
+    resource->setDuration(newDuration);
 }
