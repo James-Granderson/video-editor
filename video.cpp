@@ -1,49 +1,30 @@
 #include "video.h"
-
 #include <stdexcept>
 
-Video::Video(const std::string& identity,
-             const std::string& source,
-             double duration)
-    : identity(identity), source(source), duration(duration) {
-
-    if (identity.empty()) {
-        throw std::invalid_argument("Video identity cannot be empty");
-    }
-
-    if (source.empty()) {
-        throw std::invalid_argument("Video source cannot be empty");
-    }
-
-    if (duration <= 0.0) {
-        throw std::invalid_argument("Video duration must be positive");
+Video::Video(std::shared_ptr<MediaResource> res) : resource(std::move(res)) {
+    if (!resource) {
+        throw std::invalid_argument("Video resource pointer cannot be null");
     }
 }
 
-const std::string& Video::getIdentity() const {
-    return identity;
-}
-
-const std::string& Video::getSource() const {
-    return source;
-}
-
-double Video::getDuration() const {
-    return duration;
+void Video::separate() {
+    if (isLinked()) {
+        // Re-assign pointer to an independent heap copy preserving current snapshot
+        resource = std::make_shared<MediaResource>(*resource);
+    }
 }
 
 void Video::cut(double startTime, double endTime) {
     if (startTime < 0.0) {
         throw std::invalid_argument("Start time cannot be negative");
     }
-
     if (endTime <= startTime) {
         throw std::invalid_argument("End time must be greater than start time");
     }
-
-    if (endTime > duration) {
-        throw std::invalid_argument("End time cannot exceed video duration");
+    if (endTime > resource->getDuration()) {
+        throw std::invalid_argument("End time cannot exceed current duration");
     }
 
-    duration -= (endTime - startTime);
+    double newDuration = resource->getDuration() - (endTime - startTime);
+    resource->setDuration(newDuration);
 }
